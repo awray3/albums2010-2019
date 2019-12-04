@@ -1,0 +1,56 @@
+---
+title: "Albums of the Decade, 2010 -- 2019"
+author: "Andrew Wray"
+date: "12/3/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.align="center")
+library("tidyverse")
+library("ggplot2")
+
+albums <- read_csv("data/AOTD.csv")
+albums$rank <- as.numeric(albums$rank)
+albums$year <- as.numeric(albums$year)
+
+top_10 <- albums %>% filter(rank <= 10)
+```
+
+# Introduction
+
+## Exploratory Data Analysis
+
+```{r}
+number_of_artists <- length(unique(albums$artist))
+```
+
+```{r}
+albums %>% filter(rank <= 10) %>% select(year) %>% 
+  ggplot(aes(x=year)) + geom_histogram(aes(y=..density..), binwidth = 1)
+```
+
+```{r}
+albums %>% select(year) %>% ggplot(aes(x=year)) + geom_histogram(aes(y=..density..), binwidth = 1)
+```
+
+```{r}
+top_10 %>% select(artist) %>% apply(MARGIN=2, table) 
+```
+So, Kendrick Lamar shows up the most in the top 10 most frequently.
+
+```{r}
+album 
+```
+
+
+
+
+
+
+
+
+
+
