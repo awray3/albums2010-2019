@@ -42,8 +42,60 @@ top_10 %>% select(artist) %>% apply(MARGIN=2, table)
 So, Kendrick Lamar shows up the most in the top 10 most frequently.
 
 ```{r}
-album 
+top_10 %>% group_by(artist) %>% summarise(count=n()) 
 ```
+
+## Are 2019 Albums underrepresented?
+
+One way to do it: treat each year like a data point and view the counts for each year as a population. Then check if it is an outlier.
+```{r}
+year_counts <- albums %>% group_by(year) %>% summarize(count=n())
+counts_summary <- year_counts$count %>% summary()
+
+q1 <- counts_summary["1st Qu."]
+q3 <- counts_summary["3rd Qu."]
+
+year_counts %>% filter(
+  count < (q1 - 1.5*(q3-q1)) | count > (q3 + 1.5*(q3-q1))
+)
+``` 
+
+Yep, 2019 definitely counts as an outlier according to the interquartile rule.
+
+Another option: put a prior that albums follow a uniform prior for years. Then calculate the likelihood and posterior for this?
+
+```{r, include=F}
+# year_counts$cumsum <- cumsum(year_counts$count)
+# year_counts %>% ggplot(aes(x = year, y = cumsum)) + geom_point()
+```
+
+## Metrics
+
+Next we make a score based on the rank:
+
+```{r}
+rank_cutoffs <- c(10, 20, 30, 40, 50, 100, 200)
+score_brackets <- c(10, 8, 5, 3, 2, 1, 0.5)
+# score_brackets <- (7:1)
+
+rank_to_score <- function (rank) {
+  return(score_brackets[rank_cutoffs >= rank][1])
+}
+
+albums$score <- sapply(albums$rank, rank_to_score)
+```
+
+
+
+```{r}
+album_scores <- (albums %>% group_by(artist, album) %>% summarize(total_score = sum(score))
+)
+
+artist_scores <- album_scores %>% summarize(artist_score = sum(total_score)) %>% arrange(desc(artist_score))
+```
+
+Interesting results! Kendrick beats out Kanye in terms of raw score, but which artist's albums appear higher more often?
+
 
 
 
