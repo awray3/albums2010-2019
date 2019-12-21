@@ -108,3 +108,5 @@ venv.bak/
 .Rhistory
 *.html
 data/musicbrainz_artists.csv
+top_albums_cache/
+top_albums_files/
