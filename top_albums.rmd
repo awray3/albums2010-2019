@@ -11,51 +11,70 @@ editor_options:
 knitr::opts_chunk$set(echo = FALSE, fig.align="center")
 library("tidyverse")
 library("ggplot2")
+library("reshape2")
+library("pander")
+library("Hmisc")
+library("knitr")
 
-albums <- read_csv("data/AOTD.csv")
-albums$rank <- as.numeric(albums$rank)
-albums$year <- as.numeric(albums$year)
+# For correspondence analysis
+library("FactoMineR")
+library("factoextra")
 
-top_10 <- albums %>% filter(rank <= 10)
+
+albums.data <- read_csv("data/AOTD_clean.csv")
+albums.data$rank <- as.integer(albums.data$rank)
+albums.data$year <- as.numeric(albums.data$year)
+albums.data$reviewer <- as.factor(albums.data$reviewer)
+
+albums.reviewers <- albums.data$reviewer %>% as.character() %>% unique
+albums.reviewer_sym_pairs <- combn(albums.reviewers[albums.reviewers!="Time"], 2, simplify = TRUE, FUN=function(x) paste(x[1], x[2], sep=":"))
+albums.reviewer_pairs <- expand.grid(albums.reviewers[albums.reviewers!="Time"], albums.reviewers[albums.reviewers!="Time"]) %>% filter(Var1!=Var2) %>% unite(pairs, sep=":") %>% {as.list(.)$pair}
+
+
+
+albums.top_10 <- albums.data %>% filter(rank <= 10)
 ```
 
-# Introduction
+
+# Introduction {.tabset}
 
 ## Exploratory Data Analysis
 
 ```{r}
-number_of_artists <- length(unique(albums$artist))
+albums.num_artists <- length(unique(albums.data$artist))
+albums.num_albums <- length(unique(albums.data$album))
+
 ```
 
 ```{r}
-albums %>% filter(rank <= 10) %>% select(year) %>% 
+albums.data %>% filter(rank <= 10) %>% select(year) %>% 
   ggplot(aes(x=year)) + geom_histogram(aes(y=..density..), binwidth = 1)
 ```
 
 ```{r}
-albums %>% select(year) %>% ggplot(aes(x=year)) + geom_histogram(aes(y=..density..), binwidth = 1)
+albums.data %>% select(year) %>% ggplot(aes(x=year)) + geom_histogram(aes(y=..density..), binwidth = 1)
 ```
 
 ```{r}
-top_10 %>% select(artist) %>% apply(MARGIN=2, table) 
+albums.top_10 %>% select(artist) %>% apply(MARGIN=2, table) 
 ```
 So, Kendrick Lamar shows up the most in the top 10 most frequently.
 
 ```{r}
-top_10 %>% group_by(artist) %>% summarise(count=n()) 
+albums.top_10 %>% group_by(artist) %>% summarise(count=n()) 
 ```
 
 ## Are 2019 Albums underrepresented?
 
 One way to do it: treat each year like a data point and view the counts for each year as a population. Then check if it is an outlier.
 ```{r}
-year_counts <- albums %>% group_by(year) %>% summarize(count=n())
-counts_summary <- year_counts$count %>% summary()
+albums.year_counts <- albums.data %>% group_by(year) %>% dplyr::summarize(count=n())
+albums.counts_summary <- albums.year_counts$count %>% summary()
 
-q1 <- counts_summary["1st Qu."]
-q3 <- counts_summary["3rd Qu."]
+q1 <- albums.counts_summary["1st Qu."]
+q3 <- albums.counts_summary["3rd Qu."]
 
-year_counts %>% filter(
+albums.year_counts %>% filter(
   count < (q1 - 1.5*(q3-q1)) | count > (q3 + 1.5*(q3-q1))
 )
 ``` 
@@ -74,35 +93,245 @@ Another option: put a prior that albums follow a uniform prior for years. Then c
 Next we make a score based on the rank:
 
 ```{r}
-rank_cutoffs <- c(10, 20, 30, 40, 50, 100, 200)
-score_brackets <- c(10, 8, 5, 3, 2, 1, 0.5)
-# score_brackets <- (7:1)
-
-rank_to_score <- function (rank) {
-  return(score_brackets[rank_cutoffs >= rank][1])
-}
-
-albums$score <- sapply(albums$rank, rank_to_score)
-```
-
-
-
-```{r}
-album_scores <- (albums %>% group_by(artist, album) %>% summarize(total_score = sum(score))
-)
-
-artist_scores <- album_scores %>% summarize(artist_score = sum(total_score)) %>% arrange(desc(artist_score))
+# rank_cutoffs <- c(10, 20, 30, 40, 50, 100, 200)
+# score_brackets <- c(10, 8, 5, 3, 2, 1, 0.5)
+# # score_brackets <- (7:1)
+# 
+# rank_to_score <- function (rank) {
+#   return(score_brackets[rank_cutoffs >= rank][1])
+# }
+# 
+# albums$score <- sapply(albums$rank, rank_to_score)
+# albums.album_scores <- (albums.data %>% group_by(artist, album) %>% summarize(total_score = sum(score))
+# )
+# 
+# albums.artist_scores <- albums.album_scores %>% summarize(artist_score = sum(total_score)) %>% arrange(desc(artist_score))
 ```
 
 Interesting results! Kendrick beats out Kanye in terms of raw score, but which artist's albums appear higher more often?
 
+Want: number of each times each album appears in the top 10.
+```{r, eval=FALSE}
+# top_10_artists <- 
+# top_10_artists$times_in_top_10 <- top_10 %>% group_by(artist, album) %>% summarize(count = n()) %>% summarize(total_count = sum(count)) %>% arrange(desc(total_count))
+# 
+# top_10_artists$total_score <- (
+#   artist_scores %>% filter(artist %in% top_10$artist) %>% select(artist_score)
+# )
+```
+
+## Who Dominates the top 10?
+
+Ideas:
+- Balloon plot with ranker on the x? Not sure
+- Mosaic plot?
+- Correspondence analysis?!
+  - Have bins for rank (top 10, top 20, ...)
+  - rows are artists, but observations are each album.
+  - e.g. Kanye 1: MBDTF bins
+         Kanye 2: Yeeyus bins ...
+         https://www.mathematica-journal.com/2010/09/20/an-introduction-to-correspondence-analysis/
+
+
+# Correspondence analysis {.tabset}
+
+<!-- ### Count how many times each album appears within each bin count.  -->
+
+```{r, eval=F}
+# https://stackoverflow.com/questions/11963508/define-and-apply-custom-bins-on-a-dataframe 
+# This might have what I need.
+# cuts <- apply(albums, 2, cut, c(0,1,10, 20, 30, 40, 50, 100, 200), labels=)
+```
+
+
+
+## Skillings-Mack tests {.tabset}
+
+What if we turn the question on its head. Instead of asking "How did each album get rated by these reviewers?" we could instead take a list of albums and ask "How did the reviewers differ and correlate?"
+
+Do a Skillings-Mack analysis (which is a suitable generalization of Kendall Tau to include missing values in arbitrary places, like we have here). To do this, we need to make a pivot table.
+
+```{r}
+albums.pivot <- as_tibble(dcast(albums.data, artist+album ~ reviewer, value.var = 'rank'))
+
+#get number of times each album appears in a list.
+albums.pivot$times_rated <- length(albums.reviewers) - (
+  albums.pivot %>% select(albums.reviewers) %>% is.na %>% rowSums
+)
+
+# 
+albums.pivot$highest_rank <- (albums.pivot %>% select(albums.reviewers) %>% apply(1, FUN=min, na.rm=T))
+```
+This dataframe might be interesting on its own! I'm not sure if I had found a good way to do that earlier...
+
+
+```{r kendall_tau_correlation_test}
+# albums.pivot %>% select(albums.reviewers) %>% cor(use="complete.obs", method = "kendall")
+```
+
+
+### All reviewers
+
+The Skillings-Mack test assumes that we don't have any albums that are reviewed by only one reviewer. 
+```{r Skillings_mack_test, cache=TRUE, eval=FALSE}
+albums.rank_mat <- albums.pivot %>% filter(times_rated>1) %>% select(albums.reviewers) %>% data.matrix() %>% t
+
+albums.SM <- Ski.Mack(albums.rank_mat, simulate.p.value = TRUE)
+```
+
+Results in:
+Skillings-Mack Statistic =  15.716902 , p-value =  0.027832 
+Note: the p-value is based on the chi-squared distribution with d.f. =  7 
+Based on B =  10000 , Simulated p-value =  0.025300 
+
+### Leaving out Time Magazine
+```{r Skillings_mack_test_no_time, cache=TRUE, eval=FALSE}
+albums.rank_mat_no_time <- albums.pivot %>% filter(times_rated>1) %>% 
+  select(albums.reviewers[!albums.reviewers=="Time"]) %>% 
+  data.matrix() %>% t
+
+albums.rank_mat_no_time <- albums.rank_mat_no_time[, !colSums(!is.na(albums.rank_mat_no_time)) == 1]
+
+system.time(albums.SM_no_time <- Ski.Mack(albums.rank_mat_no_time, simulate.p.value = TRUE))
+```
+
+Skillings-Mack Statistic =  11.638923 , p-value =  0.070526 
+Note: the p-value is based on the chi-squared distribution with d.f. =  6 
+Based on B =  10000 , Simulated p-value =  0.068400 
+
+Time probably shouldn't be included in an analysis like this. After all, the assumptions of the test require that we be dealing with rankings!
+
+### Leaving out Time and Pitchfork
+```{r no_pitch_or_time, eval=FALSE}
+
+albums.rank_mat_3 <- albums.pivot %>% filter(times_rated>1) %>% 
+  select(albums.reviewers[!albums.reviewers %in% c("Time", "Pitchfork")]) %>% 
+  data.matrix() %>% t
+
+albums.rank_mat_3 <- albums.rank_mat_3[, !colSums(!is.na(albums.rank_mat_3)) == 1]
+
+
+system.time(albums.SM3 <- Ski.Mack(albums.rank_mat_3, simulate.p.value = TRUE))
+```
+
+Skillings-Mack Statistic =  1.440944 , p-value =  0.919783 
+Note: the p-value is based on the chi-squared distribution with d.f. =  5 
+Based on B =  10000 , Simulated p-value =  0.915200 
+
+Not very good at all! hahaha.
 
 
 
 
 
+## Spearman Correlation {.tabset}
+```{r func_def}
+print_corr <- function(df, cor_only=TRUE) {
+  cor_mat <- rcorr(as.matrix(df), type="spearman")
+  
+  if (cor_only) {
+    return(kable(cor_mat$r))
+  }
+  else {
+    return(cor_mat)
+  }
+}
+
+```
+
+
+### Understanding correlations of rankings 
+
+First, here is a toy data frame. One ranker, say Pitchfork, gives a top 10 ranking. Then Genius almost agrees with Pitchfork, say, except they differ in one ordering (1 and 2). Then, say Time comes in with the completely opposite ranking. This is shown in the toy data below.
+```{r}
+toy_data <- tibble(Pitchfork=1:10, Genius=1:10, Time=10:1)
+toy_data[1, "Genius"] = 2
+toy_data[2, "Genius"] = 1
+
+kable(toy_data)
+toy_data %>% print_corr()
+```
+
+Passing this into `Hmisc::rcorr`, the resulting correlation tells us exactly what we think it should.
+
+What if we now add in some rows that have some missing information in them?
+
+```{r toy_add_NA}
+toy_data[11, ] = c(12, 12, NA)
+
+kable(toy_data)
+toy_data %>% print_corr()
+```
+
+Adding one missing value with otherwise equal rankings does not change the correlation values. 
+
+
+### Whole data
+```{r spearman_corr_all_data}
+albums.pivot %>% select(albums.reviewers) %>% print_corr(cor_only=TRUE)
+```
+
+
+Cool idea: plot the correlation values as a function of rank. In other words, for each integer $n$ from 1 to 100, calculate the correlation matrix. Plot its values. I expect it to start high ish and decay down to the values we see when including all ranks.
+
+```{r}
+
+get_corr <- function(dat, n) {
+  # First get all rows of dat that contain at least one rank less than or equal to n.
+  new_dat <- (dat %>% filter(highest_rank<=n) %>% select(albums.reviewers) %>% as.matrix)
+  return(rcorr(new_dat, type="spearman")$r)
+}
+
+
+make_corr_table <- function(dat, min_rk, max_rk) {
+  
+  df <- tibble(n=min_rk:max_rk)
+  df[albums.reviewer_pairs] <- NA
+  
+  for (i in (1:nrow(df))) {
+    cor_mat <- get_corr(dat, df[[i,"n"]])
+    
+    for (j in 1:length(albums.reviewer_pairs)) {
+      rev <- strsplit(albums.reviewer_pairs[j], ":")[[1]]
+      df[i, albums.reviewer_pairs[j]] <- cor_mat[rev[1], rev[2]]
+    }
+    
+  }
+  
+  return(df)
+}
+```
+
+```{r}
+albums.correlations <- albums.pivot %>% 
+  select(albums.reviewers, highest_rank) %>% 
+  make_corr_table(10, 100) %>% 
+  as.data.frame() %>% 
+  melt(id="n", 
+       variable.name="reviewer_pair", 
+       value.name="correlation") %>% 
+  as_tibble
+
+albums.correlations$reviewer_pair <- as.character(albums.correlations$reviewer_pair)
+
+albums.correlations <- albums.correlations %>%
+  separate(reviewer_pair, sep=":", into=c("reviewer_1", "reviewer_2"), remove=FALSE)
+```
+
+```{r}
+ggplot(albums.correlations, aes(x=n, y=correlation, color=reviewer_1)) + 
+  # geom_point() + 
+  geom_line() + 
+  facet_wrap("reviewer_2")
+  # guides(shape = guide_legend(ncol=1))
+```
 
 
 
+
+
+# Other ideas
+
+Largest discrepancies
 
 
