@@ -96,7 +96,6 @@ class DataCleaner:
     def extract_year_from_paren(self, attr, delim="()"):
         
         self.years = [s[s.rfind(delim[0]) + 1 : s.rfind(delim[1])].strip() for s in getattr(self, attr)]
-        setattr(self, attr, )
         
     def trim(self, attr, chars, left=True, right=False):
         """
