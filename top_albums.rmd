@@ -17,8 +17,8 @@ library("Hmisc")
 library("knitr")
 
 # For correspondence analysis
-library("FactoMineR")
-library("factoextra")
+# library("FactoMineR")
+# library("factoextra")
 
 
 albums.data <- read_csv("data/AOTD_clean.csv")
@@ -133,23 +133,11 @@ Ideas:
          https://www.mathematica-journal.com/2010/09/20/an-introduction-to-correspondence-analysis/
 
 
-# Correspondence analysis {.tabset}
-
-<!-- ### Count how many times each album appears within each bin count.  -->
-
-```{r, eval=F}
-# https://stackoverflow.com/questions/11963508/define-and-apply-custom-bins-on-a-dataframe 
-# This might have what I need.
-# cuts <- apply(albums, 2, cut, c(0,1,10, 20, 30, 40, 50, 100, 200), labels=)
-```
-
 
 
 ## Skillings-Mack tests {.tabset}
 
 What if we turn the question on its head. Instead of asking "How did each album get rated by these reviewers?" we could instead take a list of albums and ask "How did the reviewers differ and correlate?"
-
-Do a Skillings-Mack analysis (which is a suitable generalization of Kendall Tau to include missing values in arbitrary places, like we have here). To do this, we need to make a pivot table.
 
 ```{r}
 albums.pivot <- as_tibble(dcast(albums.data, artist+album ~ reviewer, value.var = 'rank'))
@@ -161,67 +149,16 @@ albums.pivot$times_rated <- length(albums.reviewers) - (
 
 # 
 albums.pivot$highest_rank <- (albums.pivot %>% select(albums.reviewers) %>% apply(1, FUN=min, na.rm=T))
+
+rank_to_score <- function(n) {
+  return(ifelse(is.na(n), 0, ifelse(n<=100, 101-n, 1)))
+}
+
+albums.scores <- albums.pivot
+albums.scores[, albums.reviewers] <- albums.pivot %>% select(albums.reviewers) %>% apply(c(1,2), rank_to_score)
+albums.scores$total <- albums.scores %>% select(albums.reviewers) %>% rowSums
 ```
 This dataframe might be interesting on its own! I'm not sure if I had found a good way to do that earlier...
-
-
-```{r kendall_tau_correlation_test}
-# albums.pivot %>% select(albums.reviewers) %>% cor(use="complete.obs", method = "kendall")
-```
-
-
-### All reviewers
-
-The Skillings-Mack test assumes that we don't have any albums that are reviewed by only one reviewer. 
-```{r Skillings_mack_test, cache=TRUE, eval=FALSE}
-albums.rank_mat <- albums.pivot %>% filter(times_rated>1) %>% select(albums.reviewers) %>% data.matrix() %>% t
-
-albums.SM <- Ski.Mack(albums.rank_mat, simulate.p.value = TRUE)
-```
-
-Results in:
-Skillings-Mack Statistic =  15.716902 , p-value =  0.027832 
-Note: the p-value is based on the chi-squared distribution with d.f. =  7 
-Based on B =  10000 , Simulated p-value =  0.025300 
-
-### Leaving out Time Magazine
-```{r Skillings_mack_test_no_time, cache=TRUE, eval=FALSE}
-albums.rank_mat_no_time <- albums.pivot %>% filter(times_rated>1) %>% 
-  select(albums.reviewers[!albums.reviewers=="Time"]) %>% 
-  data.matrix() %>% t
-
-albums.rank_mat_no_time <- albums.rank_mat_no_time[, !colSums(!is.na(albums.rank_mat_no_time)) == 1]
-
-system.time(albums.SM_no_time <- Ski.Mack(albums.rank_mat_no_time, simulate.p.value = TRUE))
-```
-
-Skillings-Mack Statistic =  11.638923 , p-value =  0.070526 
-Note: the p-value is based on the chi-squared distribution with d.f. =  6 
-Based on B =  10000 , Simulated p-value =  0.068400 
-
-Time probably shouldn't be included in an analysis like this. After all, the assumptions of the test require that we be dealing with rankings!
-
-### Leaving out Time and Pitchfork
-```{r no_pitch_or_time, eval=FALSE}
-
-albums.rank_mat_3 <- albums.pivot %>% filter(times_rated>1) %>% 
-  select(albums.reviewers[!albums.reviewers %in% c("Time", "Pitchfork")]) %>% 
-  data.matrix() %>% t
-
-albums.rank_mat_3 <- albums.rank_mat_3[, !colSums(!is.na(albums.rank_mat_3)) == 1]
-
-
-system.time(albums.SM3 <- Ski.Mack(albums.rank_mat_3, simulate.p.value = TRUE))
-```
-
-Skillings-Mack Statistic =  1.440944 , p-value =  0.919783 
-Note: the p-value is based on the chi-squared distribution with d.f. =  5 
-Based on B =  10000 , Simulated p-value =  0.915200 
-
-Not very good at all! hahaha.
-
-
-
 
 
 ## Spearman Correlation {.tabset}
@@ -279,7 +216,7 @@ Cool idea: plot the correlation values as a function of rank. In other words, fo
 get_corr <- function(dat, n) {
   # First get all rows of dat that contain at least one rank less than or equal to n.
   new_dat <- (dat %>% filter(highest_rank<=n) %>% select(albums.reviewers) %>% as.matrix)
-  return(rcorr(new_dat, type="spearman")$r)
+  return(cor(new_dat, method="spearman"))
 }
 
 
@@ -303,10 +240,9 @@ make_corr_table <- function(dat, min_rk, max_rk) {
 ```
 
 ```{r}
-albums.correlations <- albums.pivot %>% 
-  select(albums.reviewers, highest_rank) %>% 
-  make_corr_table(10, 100) %>% 
-  as.data.frame() %>% 
+albums.correlations <- albums.scores %>% 
+  make_corr_table(1, 40) %>% 
+  # as.data.frame() %>% 
   melt(id="n", 
        variable.name="reviewer_pair", 
        value.name="correlation") %>% 
@@ -316,16 +252,36 @@ albums.correlations$reviewer_pair <- as.character(albums.correlations$reviewer_p
 
 albums.correlations <- albums.correlations %>%
   separate(reviewer_pair, sep=":", into=c("reviewer_1", "reviewer_2"), remove=FALSE)
+albums.correlations$reviewer_1 <- as.factor(albums.correlations$reviewer_1)
+albums.correlations$reviewer_2 <- as.factor(albums.correlations$reviewer_2)
+
+revs <- levels(albums.correlations$reviewer_1)
+revs[revs=="Consequence of Sound"] <- "Consequence\n of Sound"
+levels(albums.correlations$reviewer_1) <- revs
+levels(albums.correlations$reviewer_2) <- revs
 ```
 
 ```{r}
+
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
 ggplot(albums.correlations, aes(x=n, y=correlation, color=reviewer_1)) + 
   # geom_point() + 
   geom_line() + 
-  facet_wrap("reviewer_2")
+  facet_wrap("reviewer_2") + 
+  scale_color_manual(values=cbbPalette)
   # guides(shape = guide_legend(ncol=1))
 ```
 
+```{r}
+ggplot(albums.correlations, aes(x=n, y=correlation)) + 
+  geom_line() +
+  facet_grid(vars(reviewer_1), vars(reviewer_2))
+
+# https://stackoverflow.com/questions/38596658/multiple-plots-lay-out-as-upper-triangle-matrix-and-formatted-as-scatter-plots
+# See there for a possible way to do upper half only
+
+```
 
 
 
@@ -333,5 +289,9 @@ ggplot(albums.correlations, aes(x=n, y=correlation, color=reviewer_1)) +
 # Other ideas
 
 Largest discrepancies
+
+# Converting to Scores
+
+Matt gave me an idea to convert the ranks into direct scores. Say rank 1 gets 100 points, rank 2 gets 99, and so on. (Later, maybe try categories instead, where top 10 get 90, top 20 get 80, and so on.)
 
 
