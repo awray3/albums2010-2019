@@ -1,7 +1,9 @@
 # Albums of the Decade, 2010 - 2019
 
 This repository is my work on scraping and analyzing the top albums of the 2010s decade. 
-For the websites below, I collected ran
+For the websites below, I collected the artist name, album name, ranking,
+and year of the album. 
+The combined and cleaned data is in the file `data/AOTD.csv`.
 
 ## Websites Included
 
