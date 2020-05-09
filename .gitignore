@@ -110,3 +110,5 @@ venv.bak/
 data/musicbrainz_artists.csv
 top_albums_cache/
 top_albums_files/
+
+scratch.rmd

@@ -1,0 +1,82 @@
+---
+title: "Top Album Ranking Analysis"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tidyverse")
+library("ggplot2")
+library("reshape2")
+
+aotd <- read_csv("./data/AOTD.csv", col_types = cols(
+  X1 = col_skip(),
+  artist = col_character(),
+  album = col_character(),
+  rank = col_integer(),
+  genre = col_character(),
+  year = col_integer(),
+  reviewer_url = col_skip()
+))
+
+
+```
+
+# Top Albums of the Decade 2010-2019
+
+Back in December 2019 many music reporters released lists of their favorite albums of the decade.
+I noticed some similarities and differences between different lists, and this led me to the
+question I would like to explore in this report, which is 
+
+<p style="text-align: center;"> How different are top decade album lists? </p>
+
+# Methodology
+
+I scraped the first few pages of Google for the top albums of the decade using the
+Python package `Beautiful Soup`. The result is a dataframe that has the features 
+`artist`, `album`, `genre`, `rank`, and `reviewer`. The data was scraped from 
+Paste, Pitchfork, Stereogum, Consequence of Sound, Genius, Billboard, Rolling Stone,
+and Time magazine.
+
+Most of these reviewers ranked 100 albums. The exceptions are Pitchfork, who ranked 200 albums, and
+Time, who ranked 10 albums without assigning a numeric value. I will treat these 10 albums
+as all ranked equally in 10th place.
+
+
+
+# Exploration
+
+To deal with the problem of not every album appearing on every ranking, I borrowed
+the scoring idea from football rankings, where personal rankings are replaced
+by scores. So, if a reviewer gives player A the 1st place ranking, player B 2nd place ranking, and so on, then person A gets, say, 10 points added to their score, person B gets 9 points, and so on. 
+I took a simple approach of subtracting the rank from the maximum possible rank (plus one), which was 200. That way first place gets 200 points, second gets 199, and so on. 
+
+
+```{r pca}
+
+# create scores
+aotd$score <- 201 - aotd$rank
+
+# create bins for the scores
+aotd$top_group <- cut(aotd$rank, c(1, 10, 20, 30, 40, 50, 200), c(paste("Top", c(10, 20, 30, 40, 50)), "> 50"))
+
+# long form to wide form
+aotd_wide <- dcast(aotd, album + artist ~ reviewer, value.var="score", fill=0)
+names(aotd_wide) <- gsub("_", " ", names(aotd_wide))
+
+# pca
+rev_pca <- prcomp(aotd_wide[-(1:2)])
+autoplot(rev_pca, loadings=TRUE, loadings.label=TRUE)
+```
+
+
+
+
+
+
+
+
+
+
