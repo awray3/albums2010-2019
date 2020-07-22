@@ -1,16 +1,17 @@
 ---
-title: "Top Album Ranking Analysis"
+title: "Analysis of Top Albums of the Decade Rankings"
 output: html_document
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, fig.align="center")
 library("tidyverse")
+library("kableExtra")
 library("ggplot2")
 library("reshape2")
-library("ggfortify")
+# library("ggfortify")
 library("plotly")
 library("ggbiplot")
 
@@ -33,17 +34,60 @@ aotd$score <- 201 - aotd$rank
 # create bins for the scores
 aotd$top_group <- cut(aotd$rank, c(1, 10, 20, 30, 40, 50, 200), c(paste("Top", c(10, 20, 30, 40, 50)), "> 50"))
 
+# Long form to wide form
+aotd_wide <- dcast(aotd, album + artist ~ reviewer, value.var="score", fill=0)
+names(aotd_wide) <- gsub("_", " ", names(aotd_wide))
 
+# number of lists each album appears on
+aotd_wide$n_lists <- rowSums(aotd_wide[-(1:2)]!=0)
+
+
+generate_PCA_plot <- function(album_df, title) {
+  df_ranks <- album_df
+  df_ranks[-(1:2)] <-
+    (
+      df_ranks[-(1:2)]
+      %>% lapply(FUN= function(x) ifelse(x!=0, 201-x, NA))
+    )
+  
+  # Generates the hovertext for the PCA plot
+  hovertext <- apply(df_ranks,
+                     MARGIN = 1,
+                     FUN = function(row) {
+                       paste(
+                         paste0("</br>", 
+                                colnames(df_ranks)
+                                ), 
+                         row, 
+                         sep=": ", 
+                         collapse = " ") 
+                       }
+                     )
+  
+  # PCA
+  rev_pca <- (
+    album_df
+    %>% select(-album, -artist)
+    %>% prcomp(scale=TRUE)
+  )
+  
+  pre_plot <- ggbiplot(rev_pca, scale=0) +
+    geom_point(aes(text=hovertext)) +
+    ggtitle(title)
+  
+  plotly_plot <- ggplotly(pre_plot, tooltip="text") 
+  
+  return(plotly_plot)
+}
 
 ```
 
-# Top Albums of the Decade 2010-2019
-
 Back in December 2019 many music reporters released lists of their favorite albums of the decade.
-I noticed some similarities and differences between different lists, and this led me to the
-question I would like to explore in this report, which is 
+I noticed some similarities and differences between different lists, and this led me to two 
+questions I would like to explore in this report:
 
-<p style="text-align: center;"> How different are top decade album lists? </p>
+1. How different are top decade album lists?
+2. Is there consensus on the top albums of the decade?
 
 # Methodology
 
@@ -51,12 +95,19 @@ I scraped the first few pages of Google for the top albums of the decade using t
 Python package `Beautiful Soup`. The result is a dataframe that has the features 
 `artist`, `album`, `genre`, `rank`, and `reviewer`. The data was scraped from 
 Paste, Pitchfork, Stereogum, Consequence of Sound, Genius, Billboard, Rolling Stone,
-and Time magazine.
+and Time magazine. Due to each website having its own HTML formatting I had to do
+the scraping nearly by hand.
 
 Most of these reviewers ranked 100 albums. The exceptions are Pitchfork, who ranked 200 albums, and
 Time, who ranked 10 albums without assigning a numeric value. I will treat these 10 albums
 as all ranked equally in 10th place.
 
+```{r show_data}
+
+kable(head(select(aotd, -top_group))) %>%
+  kable_styling(bootstrap_options=c("striped", "hover", "condensed"))
+
+```
 
 
 # Exploration
@@ -66,38 +117,40 @@ the scoring idea from football rankings, where personal rankings are replaced
 by scores. So, if a reviewer gives player A the 1st place ranking, player B 2nd place ranking, and so on, then person A gets, say, 10 points added to their score, person B gets 9 points, and so on. 
 I took a simple approach of subtracting the rank from the maximum possible rank (plus one), which was 200. That way first place gets 200 points, second gets 199, and so on. 
 
+The first idea I had was to do Principal Component Analysis (PCA) on the data
+to get a feel for the reviewers and the albums. 
 
-```{r try_again}
 
-# long form to wide form
-aotd_wide <- dcast(aotd, album + artist ~ reviewer, value.var="score", fill=0)
-names(aotd_wide) <- gsub("_", " ", names(aotd_wide))
+## {.tabset}
 
-# create boolean for whether or not an album shows up on multiple lists
-aotd_wide$n_lists <- rowSums(aotd_wide[-(1:2)]!=0)
+### With All Albums
 
-aotd_wide_multiple_reviewers <- (
-  aotd_wide 
-  %>% dplyr::filter(n_lists>1)
-  %>% select(-n_lists, -Time)
-)
+```{r all_PCA_plot, fig.width=10, fig.height=8, warning=FALSE}
 
-aotd_wide_multiple_reviewers_ranks <- aotd_wide_multiple_reviewers
-aotd_wide_multiple_reviewers_ranks[-(1:2)] <-
-  (
-    aotd_wide_multiple_reviewers_ranks[-(1:2)]
-    %>% lapply(FUN= function(x) ifelse(x!=0, 201-x, NA))
-  )
+ aotd_wide %>% select(-n_lists) %>% generate_PCA_plot("PCA using all albums")
 
-hovertext <- apply(aotd_wide_multiple_reviewers_ranks,
-                   MARGIN = 1,
-                   FUN= function(row) paste(paste0("</br>", colnames(aotd_wide_multiple_reviewers_ranks)), row, sep=": ", collapse = " ") )
+```
 
-rev_pca_multiple_reviewers <- prcomp(aotd_wide_multiple_reviewers %>% select(-album, -artist), scale=TRUE )
-p <- ggbiplot(rev_pca_multiple_reviewers, scale=0) + 
-  geom_point(aes(text=hovertext))
-ggplotly(p, tooltip="text")
-  #  autoplot(rev_pca_multiple_reviewers, loadings=TRUE, loadings.label=TRUE) +
+### Albums on Multiple Lists
+
+```{r multiple_PCA_plot, fig.width=10, fig.height=8, warning=FALSE}
+
+aotd_wide %>%
+  dplyr::filter(n_lists>1) %>%
+  select(-n_lists) %>%
+  generate_PCA_plot("PCA using albums appearing only on more than one list")
+
+```
+
+### Multiple Lists, no Time
+
+```{r PCA_no_Time, fig.width=10, fig.height=8, warning=FALSE}
+
+aotd_wide %>%
+  dplyr::filter(n_lists>1) %>%
+  select(-n_lists, -Time) %>%
+  generate_PCA_plot("PCA using albums appearing only on more than one list, excluding Time Magazine")
+
 ```
 
 
