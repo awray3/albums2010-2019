@@ -10,6 +10,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library("tidyverse")
 library("ggplot2")
 library("reshape2")
+library("ggfortify")
+library("plotly")
+library("ggbiplot")
 
 aotd <- read_csv("./data/AOTD.csv", col_types = cols(
   X1 = col_skip(),
@@ -20,6 +23,16 @@ aotd <- read_csv("./data/AOTD.csv", col_types = cols(
   year = col_integer(),
   reviewer_url = col_skip()
 ))
+```
+
+```{r preprocessing}
+
+# create scores
+aotd$score <- 201 - aotd$rank
+
+# create bins for the scores
+aotd$top_group <- cut(aotd$rank, c(1, 10, 20, 30, 40, 50, 200), c(paste("Top", c(10, 20, 30, 40, 50)), "> 50"))
+
 
 
 ```
@@ -54,21 +67,37 @@ by scores. So, if a reviewer gives player A the 1st place ranking, player B 2nd 
 I took a simple approach of subtracting the rank from the maximum possible rank (plus one), which was 200. That way first place gets 200 points, second gets 199, and so on. 
 
 
-```{r pca}
-
-# create scores
-aotd$score <- 201 - aotd$rank
-
-# create bins for the scores
-aotd$top_group <- cut(aotd$rank, c(1, 10, 20, 30, 40, 50, 200), c(paste("Top", c(10, 20, 30, 40, 50)), "> 50"))
+```{r try_again}
 
 # long form to wide form
 aotd_wide <- dcast(aotd, album + artist ~ reviewer, value.var="score", fill=0)
 names(aotd_wide) <- gsub("_", " ", names(aotd_wide))
 
-# pca
-rev_pca <- prcomp(aotd_wide[-(1:2)])
-autoplot(rev_pca, loadings=TRUE, loadings.label=TRUE)
+# create boolean for whether or not an album shows up on multiple lists
+aotd_wide$n_lists <- rowSums(aotd_wide[-(1:2)]!=0)
+
+aotd_wide_multiple_reviewers <- (
+  aotd_wide 
+  %>% dplyr::filter(n_lists>1)
+  %>% select(-n_lists, -Time)
+)
+
+aotd_wide_multiple_reviewers_ranks <- aotd_wide_multiple_reviewers
+aotd_wide_multiple_reviewers_ranks[-(1:2)] <-
+  (
+    aotd_wide_multiple_reviewers_ranks[-(1:2)]
+    %>% lapply(FUN= function(x) ifelse(x!=0, 201-x, NA))
+  )
+
+hovertext <- apply(aotd_wide_multiple_reviewers_ranks,
+                   MARGIN = 1,
+                   FUN= function(row) paste(paste0("</br>", colnames(aotd_wide_multiple_reviewers_ranks)), row, sep=": ", collapse = " ") )
+
+rev_pca_multiple_reviewers <- prcomp(aotd_wide_multiple_reviewers %>% select(-album, -artist), scale=TRUE )
+p <- ggbiplot(rev_pca_multiple_reviewers, scale=0) + 
+  geom_point(aes(text=hovertext))
+ggplotly(p, tooltip="text")
+  #  autoplot(rev_pca_multiple_reviewers, loadings=TRUE, loadings.label=TRUE) +
 ```
 
 
