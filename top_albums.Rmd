@@ -100,7 +100,7 @@ the scraping nearly by hand.
 
 Most of these reviewers ranked 100 albums. The exceptions are Pitchfork, who ranked 200 albums, and
 Time, who ranked 10 albums without assigning a numeric value. I will treat these 10 albums
-as all ranked equally in 10th place.
+as all ranked equally in 10th place. In all there are 810 rows and 8 features in this data set.
 
 ```{r show_data}
 
@@ -109,19 +109,38 @@ kable(head(select(aotd, -top_group))) %>%
 
 ```
 
+To deal with the problem of not every album appearing on every ranking, I borrowed
+a scoring idea from football rankings. The idea is to give a score to each rank. 
+So, say a reviewer gives player A the 1st place ranking, player B 2nd place ranking, and so on, 
+then person A gets 10 points added to their score, person B gets 9 points, and so on. 
+I took a simple approach of subtracting the rank from the maximum possible rank (plus one), which was 200. That way first place gets 200 points, second gets 199, and so on. 
 
 # Exploration
 
-To deal with the problem of not every album appearing on every ranking, I borrowed
-the scoring idea from football rankings, where personal rankings are replaced
-by scores. So, if a reviewer gives player A the 1st place ranking, player B 2nd place ranking, and so on, then person A gets, say, 10 points added to their score, person B gets 9 points, and so on. 
-I took a simple approach of subtracting the rank from the maximum possible rank (plus one), which was 200. That way first place gets 200 points, second gets 199, and so on. 
-
 The first idea I had was to do Principal Component Analysis (PCA) on the data
-to get a feel for the reviewers and the albums. 
+to get a feel for the reviewers and the albums. This turned out to give 
+a surprising amount of information.
 
 
-## {.tabset}
+## PCA on scores {.tabset}
+
+To gain some insight on how albums are spaced, I cast the dataframe into wide format along the score feature.
+This gave me a dataframe with albums in the rows and reviewers in the columns:
+
+```{r show_wide_form}
+aotd_wide %>% select(-n_lists) %>% head %>% kable %>% kable_styling(bootstrap_options=c("striped", "hover", "condensed"))
+```
+
+Here I would have a dataframe full of `NA`'s on albums that didn't get a ranking if I had not converted to scores. Now, any zero in this array means an album didn't appear on that website's list.
+
+I performed a few variations on the PCA analysis, which you can tab through below. 
+First I tried it with all of the albums, but you see many collinear data points which come from
+low-ranked albums that only appear on one list. 
+The second plot removes those albums and only shows albums appearing on more than one list.
+The third plot shows the result of removing Time from the ranking, since only
+10 albums were reviewed. 
+
+Mouse over the plots to see more information about data points.
 
 ### With All Albums
 
@@ -153,10 +172,36 @@ aotd_wide %>%
 
 ```
 
+## PCA Interpretation
 
+There seems to be a clear interpretation of the first two principal components in this setting:
+the first component seems to be measuring average score, with higher-scoring albums off to the left
+and lower-scoring albums off to the right.
+The second component seems to be measuring consensus between the reviewers:
+albums closer to the $x$-axis (i.e. with PC2 $\approx 0$) have a higher consensus between rankers,
+and albums farther away from the x-axis seem to have lower consensus.
 
+Based on the trends above there seems to be a few noteworthy clusters of albums. 
 
+1. A cluster near the $x$-axis farthest to the left. Inspecting these albums tells me they 
+all have high rankings.
 
+2. Albums near the $y$-axis but far away from the x-axis. Inspecting tells me they
+have mixed rankings.
+
+3. Albums near the $x$-axis farthest to the right. These are albums that get
+low scores from most reviewers.
+
+It seems there is an answer here to the question "which albums are truly albums of the decade?"
+This seems to be those in the first cluster.
+
+# Future Directions
+
+The loadings in the PCA plots above give some indication for how similar the ranking lists
+are - the closer the arrows, the more similar the lists. I am curious about
+finding a more clear method of deciding the similarity between rankers.
+Furthermore, I have not yet used the genre feature in analyzing this data, and it would be interesting to see if
+there are any interesting patterns that emerge if genre is included.
 
 
 
