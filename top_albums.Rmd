@@ -140,7 +140,7 @@ First I tried it with all of the albums, but you see many collinear data points 
 low-ranked albums that only appear on one list. 
 The second plot removes those albums and only shows albums appearing on more than one list.
 The third plot shows the result of removing Time from the ranking, since only
-10 albums were reviewed. (Note that removing Time does not alter the results significantly.)
+10 albums were reviewed.
 
 Mouse over the plots to see more information about the data points.
 
@@ -184,7 +184,7 @@ The second component measures consensus between the reviewers:
 albums closer to the $x$-axis (ie. with PC2 $\approx 0$) have a higher consensus between rankers,
 and albums farther away from the x-axis seem to have lower consensus.
 
-Based on the trends above there seems to be a few noteworthy clusters of albums. 
+Based on the trends above there seems to be a few noteworthy clusters of albums.
 
 1. A cluster near the $x$-axis farthest to the left. Inspecting these albums tells me they 
 all have high rankings.
