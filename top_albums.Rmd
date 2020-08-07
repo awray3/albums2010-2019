@@ -89,10 +89,12 @@ questions I would like to explore in this report:
 1. How different are top decade album lists?
 2. Is there consensus on the top albums of the decade?
 
+(Code for this can be found on [Github](https://github.com/awray3/albums2010-2019).)
+
 # Methodology
 
 I scraped the first few pages of Google for the top albums of the decade using the
-Python package `Beautiful Soup`. The result is a dataframe that has the features 
+Python package `BeautifulSoup`. The result is a dataframe that has the features 
 `artist`, `album`, `genre`, `rank`, and `reviewer`. The data was scraped from 
 Paste, Pitchfork, Stereogum, Consequence of Sound, Genius, Billboard, Rolling Stone,
 and Time magazine. Due to each website having its own HTML formatting I had to do
@@ -138,9 +140,9 @@ First I tried it with all of the albums, but you see many collinear data points 
 low-ranked albums that only appear on one list. 
 The second plot removes those albums and only shows albums appearing on more than one list.
 The third plot shows the result of removing Time from the ranking, since only
-10 albums were reviewed. 
+10 albums were reviewed. (Note that removing Time does not alter the results significantly.)
 
-Mouse over the plots to see more information about data points.
+Mouse over the plots to see more information about the data points.
 
 ### With All Albums
 
@@ -174,11 +176,12 @@ aotd_wide %>%
 
 ## PCA Interpretation
 
+
 There seems to be a clear interpretation of the first two principal components in this setting:
-the first component seems to be measuring average score, with higher-scoring albums off to the left
+the first component measures average score, with higher-scoring albums off to the left
 and lower-scoring albums off to the right.
-The second component seems to be measuring consensus between the reviewers:
-albums closer to the $x$-axis (i.e. with PC2 $\approx 0$) have a higher consensus between rankers,
+The second component measures consensus between the reviewers:
+albums closer to the $x$-axis (ie. with PC2 $\approx 0$) have a higher consensus between rankers,
 and albums farther away from the x-axis seem to have lower consensus.
 
 Based on the trends above there seems to be a few noteworthy clusters of albums. 
